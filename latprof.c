@@ -88,16 +88,36 @@ static struct kprobe activeProbe = {
 
 static int sleepProbe_handler(struct kprobe *p, struct pt_regs *regs) {
 	int i = 0, writeNum = 0;
-	char *buf = kmalloc(999 * sizeof(char), GFP_ATOMIC);
-	pid_t my_pid = ((struct task_struct*)(regs->si))->pid;
+	int stringSize = 200;
+
+	struct task_struct *my_task_struct = (struct task_struct*)(regs->si);	
+	pid_t my_pid = my_task_struct->pid;
+
+	unsigned long * my_entries = kmalloc(MAX_STACK_TRACE * sizeof(*my_entries), GFP_ATOMIC);
+	if (my_entries == NULL) {
+		return -1;
+	}
+	struct stack_trace *my_trace = kmalloc(sizeof(*my_trace), GFP_ATOMIC);
+	if (my_trace == NULL) {
+		return -1;
+	}
+	char *traceStr = kmalloc(stringSize * sizeof(*traceStr), GFP_ATOMIC);
+	if (traceStr == NULL) {
+		return -1;
+	}
+
+	my_trace->max_entries = MAX_STACK_TRACE;
+	my_trace->nr_entries = 0;
+	my_trace->entries = my_entries;
+
+	save_stack_trace_tsk(my_task_struct, my_trace);
+	snprint_stack_trace(traceStr, stringSize, my_trace, 0);
+	printk(KERN_INFO "%s\n", traceStr);	
 	
-	struct stack_trace *trace = kmalloc(sizeof(trace), GFP_ATOMIC);
-	trace->max_entries = 12;
-	if (trace == NULL) return 1;
-	struct task_struct *my_task_struct = ((struct task_struct*)(regs->si));
-	//struct stack_trace *strace = (struct stack_trace *) my_trace;
+	//struct task_struct *my_task_struct = ((struct task_struct*)(regs->si));
+	
 	//char my_comm[16] = ((struct task_struct*)(regs->si))->comm;
-	save_stack_trace_tsk(my_task_struct, trace);
+	//save_stack_trace_tsk(my_task_struct, trace);
 	/*
 	struct task_latency_info *latency_info;
 	if (latency_info = kmalloc(sizeof(*latency_info), GFP_KERNEL) == NULL) {
@@ -110,19 +130,10 @@ static int sleepProbe_handler(struct kprobe *p, struct pt_regs *regs) {
 			my_pid,
 			((struct task_struct*)(regs->si))->comm);
 	
-	//u32 *nentry = (u32 *) strace->entries;
-	//u32 jhash1 = jhash2(nentry, strace->nr_entries, 0);
-	//u32 dhash = jhash_2words((u32)my_pid,jhash1,0);	
-	/*writeNum = snprint_stack_trace(buf, 999, strace, 0);
-	u32 jhash1 = jhash(buf, 999, 0);
-	u32 dhash = jhash_2words((u32)my_pid, jhash1, 0);
-	printk("first hash: %u, write numbers: %i, buffer: %s~~~~~~\n", dhash, writeNum, buf);*/
-	//printk(KERN_INFO "double hash result: %u\n", dhash);
-//print_stack_trace((struct stack_trace *)my_trace, 20);
-	/*if (WARN_ON(!strace->entries)) return;
-	for (i = 0; i < strace->nr_entries; i++) {
-		printk("%*c%p\n", 1, ' ', (void *)strace->entries[i]);
-	}*/
+	
+	kfree(my_entries);
+	kfree(my_trace);
+	kfree(traceStr);
 	return 0;
 }
 
