@@ -116,7 +116,10 @@ static int sleepProbe_handler(struct kprobe *p, struct pt_regs *regs) {
 	
 	//struct task_struct *my_task_struct = ((struct task_struct*)(regs->si));
 	
-	//char my_comm[16] = ((struct task_struct*)(regs->si))->comm;
+	char *my_comm = kmalloc(TASK_COMM_LEN * sizeof(char), GFP_ATOMIC);
+	memcpy((void *)my_comm, (void*)((struct task_struct*)(regs->si))->comm, TASK_COMM_LEN);
+	//my_comm = ((struct task_struct*)(regs->si))->comm;
+	//((struct task_struct*)(regs->si))->comm;
 	//save_stack_trace_tsk(my_task_struct, trace);
 	/*
 	struct task_latency_info *latency_info;
@@ -128,9 +131,10 @@ static int sleepProbe_handler(struct kprobe *p, struct pt_regs *regs) {
 	printk(KERN_INFO "------------------- sleep ---------------------\n");
 	printk(KERN_INFO "PID = %u, comm = %s\n", 
 			my_pid,
-			((struct task_struct*)(regs->si))->comm);
+			//((struct task_struct*)(regs->si))->comm);
+			my_comm);
 	
-	
+	kfree(my_comm);	
 	kfree(my_entries);
 	kfree(my_trace);
 	kfree(traceStr);
