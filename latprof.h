@@ -5,36 +5,46 @@
 #include <linux/fs.h>
 #include <linux/seq_file.h>
 
+#define latprof_debug(...) 	printk(KERN_DEBUG	__VA_ARGS__);
+#define latprof_info(...) 	printk(KERN_INFO 	__VA_ARGS__);
+#define latprof_err(...) 	printk(KERN_ERR		__VA_ARGS__);
+
 // define macros for logging
 #define PT_REGS_PARM2(x) ((x)->si)
 #define MAX_STACK_TRACE 32
 #define MAX_STACK_TRACE_DISPLAY 1000
 
+/*
 struct task_stack_trace {
 	pid_t				pid;
 	struct stack_trace 		trace;
 	unsigned long 			trace_entries[MAX_STACK_TRACE];
 };
+*/
 
 struct task_latency_info {
+	pid_t				pid;
 	char 				comm[TASK_COMM_LEN];
-
+	struct stack_trace	*trace;
+	
 	// maintain task call stack using a hash table
-	struct task_stack_trace 	task_stack;		// stack trace of the task
 	struct hlist_node		stack_node;		// hash node
-	u32				hash_key;  		// key of the hash table
-
+	u32						hash_key;  		// key of the hash table
+	
+	u64						start_tsc;
+	u64						total_tsc;
 	// maintain cumulative latency using a rbtree
-	u64 				latency_tsc;	// task sleep clock cycle
+	u64 					latency_tsc;	// task sleep clock cycle
 	struct rb_node 			latency_node;	// red-black tree node
-};
 
+};
+/*
 struct task_timer {
 	struct hlist_node 		node;			// Hash node for quicker access and update
-	pid_t				pid;			// process id that is being timed
-	u64				start_tsc;		// The cpu sleeping clock cycle
+	pid_t					pid;			// process id that is being timed
+	u64						start_tsc;		// The cpu sleeping clock cycle
 };
-
+*/
 // internal functions 
 /* kprobe handler for sleeping tasks */
 static int sleep_handler 			(struct kprobe *, struct pt_regs *);
