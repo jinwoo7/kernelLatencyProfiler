@@ -108,26 +108,19 @@ struct task_latency_info* search_rb_node(struct rblack_root_node *rt, u64 total_
 	return NULL;
 }
 
-static void hey(void) {
-	latprof_info("hellooooooooooooooooooooooooo");
-}
-
 static void checkTimeAndPrint(void) {
 	getnstimeofday(currTime);
-	//latprof_info("HELLOOOOOOOOOOOOOOO");
 	//spin_lock_irqs(&rb_lock);
-	//latprof_info("currentTime=%i, startTime=%i, diff=%i\n", currTime->tv_sec, startTime->tv_sec, currTime->tv_sec - startTime->tv_sec);
 	if ( (currTime->tv_sec - startTime->tv_sec) > 5) {
-		getnstimeofday(startTime);
 		int i = 0;
-/*		struct rblack_root_node *rb_rt_node;	// new root node
+		struct rblack_root_node *rb_rt_node;
+	
 		rb_rt_node = kmalloc(sizeof(struct rblack_root_node), GFP_KERNEL);
 		rb_rt_node->node = RB_ROOT;
-
 		// print
 		struct rb_node *temp_rb_node = rb_last(&rblack_root->node);
 		struct task_latency_info *temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
-		while(sizeof(rblack_root->node) != sizeof(*temp_info)) {
+		while(typeof(rblack_root->node) != typeof(*temp_info)) {
 			
 			rb_erase(&temp_info->latency_node, &rblack_root->node);
 			insert_rb_node(rb_rt_node, temp_info);
@@ -137,27 +130,24 @@ static void checkTimeAndPrint(void) {
 
 			temp_rb_node = rb_last(&rblack_root->node);
 			temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
-*/
 		}
 		
 		latprof_info("================================ MADE IT HERE ===============");
 		kfree(rblack_root);	
+		//&rblack_root = &rb_rt_node;
 		rblack_root = rb_rt_node;
-		
+/*
 		struct rb_node *temp_rb_node = rb_last(&rblack_root->node);
 		struct task_latency_info *temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
 		if (temp_info != NULL) {
-			char *traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_ATOMIC);
-			if (traceStr == NULL) { return -1; }
-			snprint_stack_trace(traceStr, STRING_SIZE, temp_info->trace, 0);
-			latprof_info("PID = %u, COMM = %s, cycles = %llu\n%s\n", 
-				temp_info->pid, temp_info->comm, temp_info->total_tsc, traceStr);
-			kfree(traceStr);
+			latprof_info("cycles = %llu\n", temp_info->total_tsc);
 		} else {
 			latprof_info("AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH");
 		}
-	}	 
-	//spin_unlock_irq(&rb_lock);	
+*/	
+	} 
+	//spin_unlock_irq(&rb_lock);
+	getnstimeofday(startTime);
 }
 
 
@@ -227,7 +217,7 @@ static int sleep_handler 		(struct kprobe *p, struct pt_regs *pr) {
 
 /* kprobe handler for waking up tasks */
 static int wake_up_handler 		(struct kprobe *p, struct pt_regs *pr) {
-	//checkTimeAndPrint();
+	
 	struct task_struct *my_task_struct = (struct task_struct*)(pr->si);
 	u32 key = get_callstack_jhash(my_task_struct);
 	struct task_latency_info *node;
@@ -354,4 +344,3 @@ module_exit(latprof_exit); 	/* latprof_exit() will be called at unloading the mo
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Jinwoo Yom <jinwoo7@vt.edu>");
 MODULE_DESCRIPTION("Sample kernel module");
-

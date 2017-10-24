@@ -31,20 +31,20 @@ struct task_latency_info {
 	struct hlist_node		stack_node;		// hash node
 	u32						hash_key;  		// key of the hash table
 	
-	u64						start_tsc;
-	u64						total_tsc;
+	u64						start_tsc;	
 	// maintain cumulative latency using a rbtree
-	u64 					latency_tsc;	// task sleep clock cycle
+	u64						total_tsc;
 	struct rb_node 			latency_node;	// red-black tree node
+};
 
-};
 /*
-struct task_timer {
-	struct hlist_node 		node;			// Hash node for quicker access and update
-	pid_t					pid;			// process id that is being timed
-	u64						start_tsc;		// The cpu sleeping clock cycle
+ * Red-Black tree structure
+ */ 
+struct rblack_root_node {
+	struct rb_root node;
 };
-*/
+
+
 // internal functions 
 /* kprobe handler for sleeping tasks */
 static int sleep_handler 			(struct kprobe *, struct pt_regs *);
