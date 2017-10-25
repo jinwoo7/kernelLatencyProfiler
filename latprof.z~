@@ -6,13 +6,11 @@
 #include <linux/sched.h>
 #include <linux/hashtable.h>
 #include <linux/stacktrace.h>
-#include <linux/spinlock.h>
+#include <linux///spinlock.h>
 #include <linux/slab.h>
 #include <linux/jhash.h>
 #include <linux/hash.h>
 #include <linux/proc_fs.h>
-#include <linux/seq_file.h>
-#include <linux/jiffies.h>
 #include <linux/time.h>
 #include <asm/time.h>
 #include <linux/types.h>
@@ -25,34 +23,11 @@
 //DEFINE_SPINLOCK(ht_lock);
 //DEFINE_SPINLOCK(rb_lock);
 
-
-
 static struct rblack_root_node *rblack_root;
 
 static DEFINE_HASHTABLE(lf_hashtable, SLOTS_HASH_BITS);
 
 static struct timespec *startTime, *currTime;
-
-static struct proc_dir_entry* latprof_file;
-
-static char *traceStr; 
-
-static int latprof_show(struct seq_file *m, void *v) {
-	seq_printf(m, "curr cycle: %llu, printing trace: \n%s\n", rdtsc(), traceStr);
-	return 0;
-}
-
-static int latprof_open(struct inode *node, struct file *file) {
-	return single_open(file, latprof_show, NULL);
-}
-
-static const struct file_operations latprof_fops = {
-	.owner = THIS_MODULE,
-	.open = latprof_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-};
 
 static void tl_ht_insert(struct task_latency_info *node) {
 	INIT_HLIST_NODE(&node->stack_node);
@@ -75,16 +50,16 @@ static char * getStackString(struct task_struct *task) {
 	temp_trace->nr_entries = 0;
 	save_stack_trace_tsk(task, temp_trace);
 	
-	char *printStr = kmalloc(stringSize * sizeof(*printStr), GFP_ATOMIC);
-	if (printStr == NULL) {
+	char *traceStr = kmalloc(stringSize * sizeof(*traceStr), GFP_ATOMIC);
+	if (traceStr == NULL) {
 		return -1;
 	}
 	
-	snprint_stack_trace(printStr, stringSize, temp_trace, 0);	
+	snprint_stack_trace(traceStr, stringSize, temp_trace, 0);	
 	kfree(temp_trace->entries);
 	kfree(temp_trace);
 
-	return printStr;
+	return traceStr;
 }
 
 static u32 get_callstack_jhash(struct task_struct *task) {
@@ -133,49 +108,62 @@ struct task_latency_info* search_rb_node(struct rblack_root_node *rt, u64 total_
 	return NULL;
 }
 
+static void hey(void) {
+	latprof_info("hellooooooooooooooooooooooooo");
+}
+
 static void checkTimeAndPrint(void) {
 	getnstimeofday(currTime);
+	//latprof_info("HELLOOOOOOOOOOOOOOO");
 	//spin_lock_irqs(&rb_lock);
+	//latprof_info("currentTime=%i, startTime=%i, diff=%i\n", currTime->tv_sec, startTime->tv_sec, currTime->tv_sec - startTime->tv_sec);
 	if ( (currTime->tv_sec - startTime->tv_sec) > 5) {
 		getnstimeofday(startTime);
 		int i = 0;
 		struct rblack_root_node *rb_rt_node;	// new root node
-		rb_rt_node = kmalloc(sizeof(struct rblack_root_node), GFP_ATOMIC);
+		rb_rt_node = kmalloc(sizeof(struct rblack_root_node), GFP_KERNEL);
 		rb_rt_node->node = RB_ROOT;
 
 		// print
-		struct rb_node *temp_rb_node = rb_last(&rblack_root->node);
+//		struct rb_node *temp_rb_node = rb_last(&rblack_root->node);
+		struct rb_node *temp_rb_node = rb_last(&rb_rt_node->node);
 		struct task_latency_info *temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
-
+//		if (typecheck(struct task_latency_info, *temp_info)) {
+/*		if(RB_EMPTY_ROOT(&rb_rt_node->node)) {
+			latprof_info("CORRECT!!!!!!!!!!!!!");
+		} else {
+			latprof_info("WRONGGGGGGGGGGGGGGGGGGGGGGGGGGG");
+		}*/
 		while(!RB_EMPTY_ROOT(&rblack_root->node)) {
 			rb_erase(&temp_info->latency_node, &rblack_root->node);
 			insert_rb_node(rb_rt_node, temp_info);
-				
-			if (!latprof_file) { return -ENOMEM; }
-				
-			if (i < MAX_STACK_TRACE_DISPLAY) {
-				//char *printStr = kmalloc(STRING_SIZE * sizeof(*printStr), GFP_ATOMIC);
-				traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_ATOMIC);
-				if (traceStr == NULL) { return -1; }
-				snprint_stack_trace(traceStr, STRING_SIZE, temp_info->trace, 0);
-/*				latprof_info("PID = %u, COMM = %s, cycles = %llu, entryNum = %i\n%s\n", 
-					temp_info->pid, temp_info->comm, temp_info->total_tsc, i, traceStr);
-*/
-				remove_proc_entry("latprof", NULL);
-				latprof_file = proc_create("latprof", 0, NULL, &latprof_fops);
-/*
-				latprof_info("PID = %u, COMM = %s, cycles = %llu, entryNum = %i\n%s\n", 
-					temp_info->pid, temp_info->comm, temp_info->total_tsc, i, printStr);
-*/
-				kfree(traceStr);
-			}
-			i += 1;
+
+			char *traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_ATOMIC);
+			if (traceStr == NULL) { return -1; }
+			snprint_stack_trace(traceStr, STRING_SIZE, temp_info->trace, 0);
+			latprof_info("PID = %u, COMM = %s, cycles = %llu\n%s\n", 
+				temp_info->pid, temp_info->comm, temp_info->total_tsc, traceStr);
+			kfree(traceStr);
 
 			temp_rb_node = rb_last(&rblack_root->node);
 			temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
-		}	
+		}
+		
+		latprof_info("================================ MADE IT HERE ===============");
 		kfree(rblack_root);	
 		rblack_root = rb_rt_node;	
+/*		struct rb_node *temp_rb_node = rb_last(&rblack_root->node);
+		struct task_latency_info *temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
+		if (temp_info != NULL) {
+			char *traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_ATOMIC);
+			if (traceStr == NULL) { return -1; }
+			snprint_stack_trace(traceStr, STRING_SIZE, temp_info->trace, 0);
+			latprof_info("PID = %u, COMM = %s, cycles = %llu\n%s\n", 
+				temp_info->pid, temp_info->comm, temp_info->total_tsc, traceStr);
+			kfree(traceStr);
+		} else {
+			latprof_info("AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH");
+		}*/
 	}	 
 	//spin_unlock_irq(&rb_lock);	
 }
@@ -191,6 +179,7 @@ static struct kprobe activeProbe = {
 
 /* kprobe handler for sleeping tasks */
 static int sleep_handler 		(struct kprobe *p, struct pt_regs *pr) {
+	//checkTimeAndPrint();
 	int i = 0;
 	int exist = 0;
 	struct task_latency_info *tempNode;
@@ -232,11 +221,11 @@ static int sleep_handler 		(struct kprobe *p, struct pt_regs *pr) {
 	currTask_info->hash_key = get_callstack_jhash(my_task_struct);
 
 	// printing
-	char *printStr = kmalloc(STRING_SIZE * sizeof(*printStr), GFP_ATOMIC);
-	if (printStr == NULL) {	return -1; }
+	char *traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_ATOMIC);
+	if (traceStr == NULL) {	return -1; }
 	
-	snprint_stack_trace(printStr, STRING_SIZE, currTask_info->trace, 0);
-	kfree(printStr);
+	snprint_stack_trace(traceStr, STRING_SIZE, currTask_info->trace, 0);
+	kfree(traceStr);
 
 	//spin_lock_irqs(&ht_lock);
 	tl_ht_insert(currTask_info);
@@ -264,9 +253,9 @@ static int wake_up_handler 		(struct kprobe *p, struct pt_regs *pr) {
 			trace->nr_entries = 0;
 			save_stack_trace_tsk(my_task_struct, trace);
 			// printing
-			char *printStr = kmalloc(STRING_SIZE * sizeof(*printStr), GFP_ATOMIC);
-			if (printStr == NULL) { return -1; }
-			snprint_stack_trace(printStr, STRING_SIZE, trace, 0);
+			char *traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_ATOMIC);
+			if (traceStr == NULL) { return -1; }
+			snprint_stack_trace(traceStr, STRING_SIZE, trace, 0);
 			//spin_unlock_irq(&ht_lock);
 			
 			//spin_lock_irqs(&rb_lock);
@@ -283,11 +272,11 @@ static int wake_up_handler 		(struct kprobe *p, struct pt_regs *pr) {
 			//spin_unlock_irq(&rb_lock);
 
 			//latprof_info("---------------- active ------------------\nPID = %u, COMM = %s, cycles = %llu\n%s\n", 
-			//	node->pid, node->comm, node->total_tsc, printStr);
+			//	node->pid, node->comm, node->total_tsc, traceStr);
 	
 			kfree(trace->entries);
 			kfree(trace);
-			kfree(printStr);
+			kfree(traceStr);
 			checkTimeAndPrint();
 			return 0;
 		}
@@ -313,34 +302,12 @@ static void update_task_latency_info	(struct task_struct *tsk, u64 elapsed_tsc) 
 static int latprof_stat_open		(struct inode *inode, struct file *file) {
 }
 
-/*
-static int latprof_show(struct seq_file *m, void *v) {
-	seq_printf(m, "P5 : Hellos proc!\n");
-	return 0;
-}
 
-static int latprof_open(struct inode *inode, struct file *file) {
-	return single_open(file, latprof_show, NULL);
-}
-
-int write_proc(struct file *filp, const char *buf, size_t count, loff_t *offp) {
-	copy_from_user(msg, buf, count);
-	prink(KERN_INFO "In write");
-	len=count;
-	temp=len;
-	return count;
-}
-*/
 
 static int __init latprof_init(void) {
-	int sret, aret;	
+	int sret, aret;
 	startTime = kmalloc(sizeof(*startTime),GFP_KERNEL);
 	currTime = kmalloc(sizeof(*currTime), GFP_KERNEL);
-
-	traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_KERNEL);	
-	latprof_file = proc_create("latprof", 0, NULL, &latprof_fops);
-	kfree(traceStr);
-
 	hash_init(lf_hashtable);
 	rblack_root = kmalloc(sizeof(struct rblack_root_node), GFP_KERNEL);
 	rblack_root->node = RB_ROOT;
@@ -368,7 +335,6 @@ static int __init latprof_init(void) {
 static void __exit latprof_exit(void) {
 	int i = 0;
 	struct task_latency_info *node;
-	remove_proc_entry("latprof", NULL);
 	kfree(startTime);
 	kfree(currTime); 
 	unregister_kprobe(&sleepProbe);
