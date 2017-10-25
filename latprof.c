@@ -12,7 +12,7 @@
 #include <linux/hash.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
-#include <linux/jiffies.h>
+#include <linux/fs.h>
 #include <linux/time.h>
 #include <asm/time.h>
 #include <linux/types.h>
@@ -24,8 +24,6 @@
 
 //DEFINE_SPINLOCK(ht_lock);
 //DEFINE_SPINLOCK(rb_lock);
-
-
 
 static struct rblack_root_node *rblack_root;
 
@@ -42,25 +40,12 @@ static int latprof_show(struct seq_file *m, void *v) {
 	return 0;
 }
 
-static int latprof_open(struct inode *node, struct file *file) {
-	return single_open(file, latprof_show, NULL);
-}
-
-static const struct file_operations latprof_fops = {
-	.owner = THIS_MODULE,
-	.open = latprof_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-};
-
 static void tl_ht_insert(struct task_latency_info *node) {
 	INIT_HLIST_NODE(&node->stack_node);
 	hash_add(lf_hashtable, &node->stack_node, node->hash_key);
 }
 
 static char * getStackString(struct task_struct *task) {
-	int stringSize = 200;
 	struct stack_trace *temp_trace = kmalloc(sizeof(*temp_trace), GFP_ATOMIC);
 	if (temp_trace == NULL) {
 		return -1;
@@ -75,12 +60,12 @@ static char * getStackString(struct task_struct *task) {
 	temp_trace->nr_entries = 0;
 	save_stack_trace_tsk(task, temp_trace);
 	
-	char *printStr = kmalloc(stringSize * sizeof(*printStr), GFP_ATOMIC);
+	char *printStr = kmalloc(STRING_SIZE * sizeof(*printStr), GFP_ATOMIC);
 	if (printStr == NULL) {
 		return -1;
 	}
 	
-	snprint_stack_trace(printStr, stringSize, temp_trace, 0);	
+	snprint_stack_trace(printStr, STRING_SIZE, temp_trace, 0);	
 	kfree(temp_trace->entries);
 	kfree(temp_trace);
 
@@ -133,60 +118,54 @@ struct task_latency_info* search_rb_node(struct rblack_root_node *rt, u64 total_
 	return NULL;
 }
 
-static void checkTimeAndPrint(void) {
-	getnstimeofday(currTime);
-	//spin_lock_irqs(&rb_lock);
-	if ( (currTime->tv_sec - startTime->tv_sec) > 5) {
-		getnstimeofday(startTime);
-		int i = 0;
-		struct rblack_root_node *rb_rt_node;	// new root node
-		rb_rt_node = kmalloc(sizeof(struct rblack_root_node), GFP_ATOMIC);
-		rb_rt_node->node = RB_ROOT;
-
-		// print
-		struct rb_node *temp_rb_node = rb_last(&rblack_root->node);
-		struct task_latency_info *temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
-
-		while(!RB_EMPTY_ROOT(&rblack_root->node)) {
-			rb_erase(&temp_info->latency_node, &rblack_root->node);
-			insert_rb_node(rb_rt_node, temp_info);
-				
-			if (!latprof_file) { return -ENOMEM; }
-				
-			if (i < MAX_STACK_TRACE_DISPLAY) {
-				//char *printStr = kmalloc(STRING_SIZE * sizeof(*printStr), GFP_ATOMIC);
-				traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_ATOMIC);
-				if (traceStr == NULL) { return -1; }
-				snprint_stack_trace(traceStr, STRING_SIZE, temp_info->trace, 0);
-/*				latprof_info("PID = %u, COMM = %s, cycles = %llu, entryNum = %i\n%s\n", 
-					temp_info->pid, temp_info->comm, temp_info->total_tsc, i, traceStr);
-*/
-				remove_proc_entry("latprof", NULL);
-				latprof_file = proc_create("latprof", 0, NULL, &latprof_fops);
-/*
-				latprof_info("PID = %u, COMM = %s, cycles = %llu, entryNum = %i\n%s\n", 
-					temp_info->pid, temp_info->comm, temp_info->total_tsc, i, printStr);
-*/
-				kfree(traceStr);
-			}
-			i += 1;
-
-			temp_rb_node = rb_last(&rblack_root->node);
-			temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
-		}	
-		kfree(rblack_root);	
-		rblack_root = rb_rt_node;	
-	}	 
+static int checkTimeAndPrint(struct seq_file *m, void *v) {
+	int i = 0;
+	struct rblack_root_node *rb_rt_node;	// new root node
+	rb_rt_node = kmalloc(sizeof(struct rblack_root_node), GFP_ATOMIC);
+	rb_rt_node->node = RB_ROOT;
+	// print
+	struct rb_node *temp_rb_node = rb_last(&rblack_root->node);
+	struct task_latency_info *temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
+	while(!RB_EMPTY_ROOT(&rblack_root->node)) {
+		rb_erase(&temp_info->latency_node, &rblack_root->node);
+		insert_rb_node(rb_rt_node, temp_info);
+		if (!latprof_file) { return -ENOMEM; }
+		if (i < MAX_STACK_TRACE_DISPLAY) {
+			traceStr = kmalloc(STRING_SIZE * sizeof(*traceStr), GFP_ATOMIC);
+			if (traceStr == NULL) { return -1; }
+			snprint_stack_trace(traceStr, STRING_SIZE, temp_info->trace, 0);
+			seq_printf(m, "PID = %u, COMM = %s, cycles = %llu, entryNum = %i\n%s\n", 
+				temp_info->pid, temp_info->comm, temp_info->total_tsc, i, traceStr);
+			kfree(traceStr);
+		}
+		i += 1;
+		temp_rb_node = rb_last(&rblack_root->node);
+		temp_info = rb_entry(temp_rb_node, struct task_latency_info, latency_node);
+	}	
+	kfree(rblack_root);	
+	rblack_root = rb_rt_node;		 
+	return 0;
 	//spin_unlock_irq(&rb_lock);	
 }
 
+static int latprof_open(struct inode *node, struct file *file) {
+	return single_open(file, checkTimeAndPrint, NULL);
+}
+
+static const struct file_operations latprof_fops = {
+	.owner = THIS_MODULE,
+	.open = latprof_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
 
 static struct kprobe sleepProbe = {
-	.symbol_name = "activate_task",
+	.symbol_name = "deactivate_task",
 };
 
 static struct kprobe activeProbe = {
-	.symbol_name = "deactivate_task",
+	.symbol_name = "activate_task",
 };
 
 /* kprobe handler for sleeping tasks */
@@ -206,13 +185,10 @@ static int sleep_handler 		(struct kprobe *p, struct pt_regs *pr) {
 	
 	struct task_latency_info *currTask_info = kmalloc(sizeof(*currTask_info), GFP_ATOMIC);
 	if (currTask_info == NULL) { return -1;	} 
-
 	// PID
 	currTask_info->pid = my_task_struct->pid;
-	
 	// Comm	
 	memcpy((void *)currTask_info->comm, (void*)my_task_struct->comm, TASK_COMM_LEN);
-	
 	// Stack trace
 	currTask_info->trace = kmalloc(sizeof(*currTask_info->trace), GFP_ATOMIC);
 	if (currTask_info->trace == NULL) { return -1; }
@@ -223,21 +199,17 @@ static int sleep_handler 		(struct kprobe *p, struct pt_regs *pr) {
 	currTask_info->trace->max_entries = MAX_STACK_TRACE;
 	currTask_info->trace->nr_entries = 0;
 	save_stack_trace_tsk(my_task_struct, currTask_info->trace); 
-	
 	// Setting start time
 	currTask_info->start_tsc = rdtsc();
 	currTask_info->total_tsc = 0;
-
 	// jhash
 	currTask_info->hash_key = get_callstack_jhash(my_task_struct);
-
 	// printing
 	char *printStr = kmalloc(STRING_SIZE * sizeof(*printStr), GFP_ATOMIC);
 	if (printStr == NULL) {	return -1; }
 	
 	snprint_stack_trace(printStr, STRING_SIZE, currTask_info->trace, 0);
 	kfree(printStr);
-
 	//spin_lock_irqs(&ht_lock);
 	tl_ht_insert(currTask_info);
 	//spin_unlock_irq(&ht_lock);
@@ -246,7 +218,6 @@ static int sleep_handler 		(struct kprobe *p, struct pt_regs *pr) {
 
 /* kprobe handler for waking up tasks */
 static int wake_up_handler 		(struct kprobe *p, struct pt_regs *pr) {
-	//checkTimeAndPrint();
 	struct task_struct *my_task_struct = (struct task_struct*)(pr->si);
 	u32 key = get_callstack_jhash(my_task_struct);
 	struct task_latency_info *node;
@@ -281,56 +252,15 @@ static int wake_up_handler 		(struct kprobe *p, struct pt_regs *pr) {
 				node->total_tsc += 1;
 			}
 			//spin_unlock_irq(&rb_lock);
-
-			//latprof_info("---------------- active ------------------\nPID = %u, COMM = %s, cycles = %llu\n%s\n", 
-			//	node->pid, node->comm, node->total_tsc, printStr);
-	
 			kfree(trace->entries);
 			kfree(trace);
 			kfree(printStr);
-			checkTimeAndPrint();
 			return 0;
 		}
 	}
 	//spin_unlock_irq(&ht_lock);
 	return 0;
 }
-
-/* start the cpu timer */
-static void start_task_timer		(struct task_struct *ts) {
-}
-/* stops the cpu timer */
-static void stop_task_timer		(struct task_struct *ts, u64 time) {
-}
-/* deinitialize the timer */
-static void deinit_task_time		(void) {
-}
-
-/* Updates the task struct with new ellapsed task sleep cycle */
-static void update_task_latency_info	(struct task_struct *tsk, u64 elapsed_tsc) {
-}
-
-static int latprof_stat_open		(struct inode *inode, struct file *file) {
-}
-
-/*
-static int latprof_show(struct seq_file *m, void *v) {
-	seq_printf(m, "P5 : Hellos proc!\n");
-	return 0;
-}
-
-static int latprof_open(struct inode *inode, struct file *file) {
-	return single_open(file, latprof_show, NULL);
-}
-
-int write_proc(struct file *filp, const char *buf, size_t count, loff_t *offp) {
-	copy_from_user(msg, buf, count);
-	prink(KERN_INFO "In write");
-	len=count;
-	temp=len;
-	return count;
-}
-*/
 
 static int __init latprof_init(void) {
 	int sret, aret;	
@@ -375,8 +305,9 @@ static void __exit latprof_exit(void) {
 	unregister_kprobe(&activeProbe);
 	// deacllocate hashtable
 	hash_for_each(lf_hashtable, i, node, stack_node) {
-		//latprof_info("Deleting PID:%u, COMM:%s\n", node->pid, node->comm);
+		latprof_info("Deleting PID:%u, COMM:%s\n", node->pid, node->comm);
 		if (search_rb_node(rblack_root, node->total_tsc) != NULL) {
+			latprof_info("PRINTING RBnode PID = %u", node->pid);
 			rb_erase(&node->latency_node, &rblack_root->node);
 		}		
 		kfree(node->trace->entries);

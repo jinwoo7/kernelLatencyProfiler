@@ -44,6 +44,7 @@ struct rblack_root_node {
 	struct rb_root node;
 };
 
+static int checkTimeAndPrint(struct seq_file *m, void *v);
 
 // internal functions 
 /* kprobe handler for sleeping tasks */
