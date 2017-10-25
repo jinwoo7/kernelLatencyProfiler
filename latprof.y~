@@ -35,15 +35,15 @@ static char *traceStr;
 
 static void tl_ht_insert(struct task_latency_info *node) {
 	INIT_HLIST_NODE(&node->stack_node);
-	//latprof_info("HT LOCK => Entering tl_ht_insert lock\n");
-	//spin_lock(&ht_lock);
-	//latprof_info("HT LOCK => Entered tl_ht_insert lock\n");
+	latprof_info("HT LOCK => Entering tl_ht_insert lock\n");
+	//spin_lock_irq(&ht_lock);
+	latprof_info("HT LOCK => Entered tl_ht_insert lock\n");
 
 	hash_add(lf_hashtable, &node->stack_node, node->hash_key);
 
-	//latprof_info("HT LOCK => Exiting tl_ht_inser lock\n");
-	//spin_unlock(&ht_lock);
-	//latprof_info("HT LOCK => Exited tl_ht_inser lock\n");
+	latprof_info("HT LOCK => Exiting tl_ht_inser lock\n");
+	//spin_unlock_irq(&ht_lock);
+	latprof_info("HT LOCK => Exited tl_ht_inser lock\n");
 }
 
 static char * getStackString(struct task_struct *task) {
@@ -75,9 +75,9 @@ static u32 get_callstack_jhash(struct task_struct *task) {
 }
 
 int insert_rb_node(struct rblack_root_node *rt, struct task_latency_info *rb_n) {
-	//latprof_info("RB LOCK => Entering insert_rb_node\n");
-	//spin_lock(&rb_lock);
-	//latprof_info("RB LOCK => Entered inser_rb_node\n");
+	latprof_info("RB LOCK => Entering insert_rb_node\n");
+	//spin_lock_irq(&rb_lock);
+	latprof_info("RB LOCK => Entered inser_rb_node\n");
 
 	struct rb_node **link = &(rt->node.rb_node); 
 	struct rb_node *parent = NULL;
@@ -99,16 +99,16 @@ int insert_rb_node(struct rblack_root_node *rt, struct task_latency_info *rb_n) 
 	// Re-balance the rbtree if necessary
 	rb_insert_color(&rb_n->latency_node, &rt->node);
 	
-	//latprof_info("RB LOCK => Exiting insert_rb_node\n");
-	//spin_unlock(&rb_lock);
-	//latprof_info("RB LOCK => Exited inser_rb_node\n");
+	latprof_info("RB LOCK => Exiting insert_rb_node\n");
+	//spin_unlock_irq(&rb_lock);
+	latprof_info("RB LOCK => Exited inser_rb_node\n");
 	return 1;
 }
 
 struct task_latency_info* search_rb_node(struct rblack_root_node *rt, u64 total_tsc) {
-	//latprof_info("RB LOCK => Entering search_rb_node\n");
-	//spin_lock(&rb_lock);
-	//latprof_info("RB LOCK => Entered search_rb_node\n");
+	latprof_info("RB LOCK => Entering search_rb_node\n");
+	//spin_lock_irq(&rb_lock);
+	latprof_info("RB LOCK => Entered search_rb_node\n");
 
 	struct rb_node *temp = (&rt->node)->rb_node;
 	struct task_latency_info *current_node;
@@ -123,9 +123,9 @@ struct task_latency_info* search_rb_node(struct rblack_root_node *rt, u64 total_
 		}
 	}
 
-	//latprof_info("RB LOCK => Exiting search_rb_node\n");
-	//spin_unlock(&rb_lock);
-	//latprof_info("RB LOCK => Exited search_rb_node\n");
+	latprof_info("RB LOCK => Exiting search_rb_node\n");
+	//spin_unlock_irq(&rb_lock);
+	latprof_info("RB LOCK => Exited search_rb_node\n");
 	return NULL;
 }
 
@@ -135,9 +135,9 @@ static int checkTimeAndPrint(struct seq_file *m, void *v) {
 	rb_rt_node = kmalloc(sizeof(struct rblack_root_node), GFP_ATOMIC);
 	rb_rt_node->node = RB_ROOT;
 
-	//latprof_info("RB LOCK => Entering checkTimeAndPrint\n");
-	//spin_lock(&rb_lock);
-	//latprof_info("RB LOCK => Entered checkTimeAndPrint\n");
+	latprof_info("RB LOCK => Entering checkTimeAndPrint\n");
+	spin_lock_irq(&rb_lock);
+	latprof_info("RB LOCK => Entered checkTimeAndPrint\n");
 
 	// print
 	struct rb_node *temp_rb_node = rb_last(&rblack_root->node);
@@ -161,9 +161,9 @@ static int checkTimeAndPrint(struct seq_file *m, void *v) {
 	kfree(rblack_root);	
 	rblack_root = rb_rt_node;
 
-	//latprof_info("RB LOCK => Exiting checkTimeAndPrint\n");
-	//spin_unlock(&rb_lock);
-	//latprof_info("RB LOCK => Exited checkTimeAndPrint\n");
+	latprof_info("RB LOCK => Exiting checkTimeAndPrint\n");
+	spin_unlock_irq(&rb_lock);
+	latprof_info("RB LOCK => Exited checkTimeAndPrint\n");
 	return 0;	
 }
 
@@ -195,9 +195,9 @@ static int sleep_handler 		(struct kprobe *p, struct pt_regs *pr) {
 	struct task_struct *my_task_struct = (struct task_struct*)(pr->si);
 	u32 key = get_callstack_jhash(my_task_struct);
 	// checking to see if the node already exists
-	//latprof_info("HT LOCK => Entering sleep_handler\n");
-	//spin_lock(&ht_lock);
-	//latprof_info("HT LOCK => Entered sleep_handler\n");
+	latprof_info("HT LOCK => Entering sleep_handler\n");
+	//spin_lock_irq(&ht_lock);
+	latprof_info("HT LOCK => Entered sleep_handler\n");
 	
 	hash_for_each(lf_hashtable, i, tempNode, stack_node) {
 		if (key == tempNode->hash_key) {
@@ -206,9 +206,9 @@ static int sleep_handler 		(struct kprobe *p, struct pt_regs *pr) {
 		}
 	}
 
-	//latprof_info("RB LOCK => Exiting sleep_handler\n");
-	//spin_unlock(&ht_lock);
-	//latprof_info("RB LOCK => Exited sleep_handler\n");
+	latprof_info("RB LOCK => Exiting sleep_handler\n");
+	//spin_unlock_irq(&ht_lock);
+	latprof_info("RB LOCK => Exited sleep_handler\n");
 	
 	struct task_latency_info *currTask_info = kmalloc(sizeof(*currTask_info), GFP_ATOMIC);
 	if (currTask_info == NULL) { return -1;	} 
@@ -241,9 +241,9 @@ static int wake_up_handler 		(struct kprobe *p, struct pt_regs *pr) {
 	u32 key = get_callstack_jhash(my_task_struct);
 	struct task_latency_info *node;
 
-	//latprof_info("HT LOCK => Entering wake_up_handler\n");
-	//spin_lock(&ht_lock);
-	//latprof_info("HT LOCK => Entered wake_up_handler\n");
+	latprof_info("HT LOCK => Entering wake_up_handler\n");
+	//spin_lock_irq(&ht_lock);
+	latprof_info("HT LOCK => Entered wake_up_handler\n");
 
 	hash_for_each_possible(lf_hashtable, node, stack_node, key) {
 		if (key == node->hash_key) {
@@ -261,15 +261,15 @@ static int wake_up_handler 		(struct kprobe *p, struct pt_regs *pr) {
 			if (search_rb_node(rblack_root, node->total_tsc) != NULL) {
 				// Node Exists -> remove, update, and insert --- If Not exist, insert
 				
-				//latprof_info("RB LOCK => Entering rb erase in wake_up_handler\n");
-				//spin_lock(&rb_lock);
-				//latprof_info("RB LOCK => Entered rb erase in wake_up_handler\n");
+				latprof_info("RB LOCK => Entering rb erase in wake_up_handler\n");
+				//spin_lock_irq(&rb_lock);
+				latprof_info("RB LOCK => Entered rb erase in wake_up_handler\n");
 
 				rb_erase(&node->latency_node, &rblack_root->node);
 
-				//latprof_info("RB LOCK => Exiting rb erase in wake_up_handler\n");
-				//spin_unlock(&rb_lock);
-				//latprof_info("RB LOCK => Exiting rb erase in wake_up_handler\n");
+				latprof_info("RB LOCK => Exiting rb erase in wake_up_handler\n");
+				//spin_unlock_irq(&rb_lock);
+				latprof_info("RB LOCK => Exiting rb erase in wake_up_handler\n");
 			}
 			// insert (if exist, increment)
 			node->total_tsc += rdtsc() - node->start_tsc;
@@ -282,9 +282,9 @@ static int wake_up_handler 		(struct kprobe *p, struct pt_regs *pr) {
 		}
 	}
 
-	//latprof_info("RB LOCK => Exiting wake_up_handler\n");
-	//spin_unlock(&ht_lock);
-	//latprof_info("RB LOCK => Exited wake_up_handler\n");
+	latprof_info("RB LOCK => Exiting wake_up_handler\n");
+	//spin_unlock_irq(&ht_lock);
+	latprof_info("RB LOCK => Exited wake_up_handler\n");
 	return 0;
 }
 
